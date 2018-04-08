@@ -4,7 +4,9 @@ import numpy as np
 
 import linear_alg
 import curve
-import utils
+from diffusion import HeatPDE
+from pricer import Pricer
+from mtypes import FDMethod
 
 
 class LinearAlgTest(unittest.TestCase):
@@ -28,6 +30,7 @@ class LinearAlgTest(unittest.TestCase):
         # test Ax = Bd
         res = linear_alg.solve_axbd(np.array([1, 2, 3]), A=mat, B=mat)
         self.assertTrue(np.allclose(res, [1, 2, 3]))
+
 
 class CurveTest(unittest.TestCase):
     def test_make_cubic(self):
@@ -89,6 +92,36 @@ class CurveTest(unittest.TestCase):
 
         # f'' = 0
         self.assertEqual(d1(-10), d1(-100))
+
+
+class PricerTest(unittest.TestCase):
+    def test_heat_pde(self):
+        xs = np.linspace(-2, 2, 9)
+        ts = np.linspace(0, 1, 9)
+        pde = HeatPDE()
+        pricer = Pricer(pde, xs, ts, lambda x, t: np.exp(-1 - t), lambda x, t: np.exp(3 - t))
+
+        # explicit method
+        pricer.set_payout(lambda x: np.exp(x))
+        pricer.step_back(0)
+        result = pricer.get_prices()
+        answer = np.exp(xs[1: -1] + 1)
+        rmse = np.sqrt(np.mean(np.power(result - answer, 2)))
+        self.assertLessEqual(rmse, 0.08898)
+
+        # implicit method
+        pricer.set_payout(lambda x: np.exp(x))
+        pricer.step_back(0, FDMethod.Implicit)
+        result = pricer.get_prices()
+        rmse = np.sqrt(np.mean(np.power(result - answer, 2)))
+        self.assertLessEqual(rmse, 0.17202)
+
+        # Crank Nicolson method
+        pricer.set_payout(lambda x: np.exp(x))
+        pricer.step_back(0, FDMethod.CN)
+        result = pricer.get_prices()
+        rmse = np.sqrt(np.mean(np.power(result - answer, 2)))
+        self.assertLessEqual(rmse, 0.046205)
 
 
 if __name__ == "__main__":

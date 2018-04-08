@@ -10,4 +10,5 @@ class FDMethod(Enum):
 
 class BoundType(Enum):
     Dirichlet = 1
+    Neumann = 2
 
