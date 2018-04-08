@@ -11,8 +11,8 @@ class Diffusion(metaclass=abc.ABCMeta):
     def __init__(self, xs):
         self.xs = xs
         N = len(xs)
-        self.d2x = np.zeros(N)
-        self.dx = np.zeros(N + 1)
+        self.d2x = np.zeros(N - 2)
+        self.dx = np.zeros(N - 1)
         self.d2x[1: -1] = xs[2:] - xs[:-2]  # pre-cache to save computation
         self.dx[1: -1] = xs[1:] - xs[:-1]  # two ends are reserved for bounds if needed
 

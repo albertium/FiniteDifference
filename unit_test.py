@@ -14,6 +14,20 @@ class LinearAlgTest(unittest.TestCase):
         result = linear_alg.solve_tridiagonal(A, d)
         self.assertTrue(np.allclose(result, [1, 2, 3]))
 
+    def test_solve_axbd(self):
+        mat = np.array([[1, 2, 3], [3, 4, 5], [5, 6, 7]])
+
+        # test x = Bd
+        res = linear_alg.solve_axbd(np.array([1, 2, 3]), B=mat)
+        self.assertTrue(np.allclose(res, [8, 26, 28]))
+
+        # test Ax = d
+        res = linear_alg.solve_axbd(np.array([8, 26, 28]), A=mat)
+        self.assertTrue(np.allclose(res, [1, 2, 3]))
+
+        # test Ax = Bd
+        res = linear_alg.solve_axbd(np.array([1, 2, 3]), A=mat, B=mat)
+        self.assertTrue(np.allclose(res, [1, 2, 3]))
 
 class CurveTest(unittest.TestCase):
     def test_make_cubic(self):

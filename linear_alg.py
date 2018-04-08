@@ -35,3 +35,23 @@ def solve_tridiagonal(A, d):
     return dp
 
 
+def solve_axbd(d, A=None, B=None):
+    """
+    solve Ax = Bd
+    """
+    assert(not (A is None and B is None))
+    assert(d.ndim == 1)
+    assert(A is None or (len(d) == A.shape[0] and A.shape[1] == 3))
+    assert(B is None or (len(d) == B.shape[0] and B.shape[1] == 3))
+
+    if B is not None:
+        result = np.zeros(len(d))
+        result[1:] += B[1:, 0] * d[:-1]
+        result += B[:, 1] * d
+        result[:-1] += B[:-1, 2] * d[1:]
+    else:
+        result = d
+
+    if A is not None:
+        return solve_tridiagonal(A, result)
+    return result
