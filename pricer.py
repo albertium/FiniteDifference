@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from curve import Spline, make_linear
+from curve import make_linear
 from diffusion import Diffusion
 from mtypes import FDMethod, BoundType
 from linear_alg import solve_axbd
@@ -96,8 +96,8 @@ class Pricer:
 
                 if bc["type"] == BoundType.Dirichlet:
                     e2[idx] = m * ref[self.curr + 1]
-                elif self.bc["type"] == BoundType.Neumann:
-                    e2[idx] = m * self.state[idx] + ref[self.curr + 1]
+                elif bc["type"] == BoundType.Neumann:
+                    e2[idx] = m * (self.state[idx] + ref[self.curr + 1])
                 else:
                     raise RuntimeError("Unrecognized boundary condition type")
         else:

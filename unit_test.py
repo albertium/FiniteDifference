@@ -130,7 +130,7 @@ class PricerTest(unittest.TestCase):
         self.assertLessEqual(rmse, 0.046205)
 
     def test_european_call(self):
-        # TODO: why accuracy is low? should get down to 10e^-5 level
+        # TODO: why accuracy is low? should get down to 10e^-5 level. because of boundary condition?
         S, K, r, q, sig, T = 100, 100, 0.05, 0.02, 0.35, 1
         S_max = 300
         tick = 0.5
@@ -139,13 +139,6 @@ class PricerTest(unittest.TestCase):
         pde = BlackScholesPDE(r, q, sig)
 
         # ========== Call ==========
-        # bc
-        # bc = {
-        #     "type": BoundType.Dirichlet,
-        #     "lb": lambda x, t: np.zeros_like(t),
-        #     "ub": lambda x, t: x * np.exp(-q * (T - t)) - K * np.exp(-r * (T - t)),
-        # }
-
         # bc
         bc = {
             "lb": {
@@ -170,6 +163,32 @@ class PricerTest(unittest.TestCase):
         answer = [get_black_scholes_price(x, K, r, q, sig, T) for x in xs[1: -1][mask]]
         rmse = np.sqrt(np.mean(np.power(result - answer, 2)))
         self.assertLessEqual(rmse, 0.00029041)
+
+        # ========== Call Neumann ==========
+        # bc
+        bc = {
+            "lb": {
+                "type": BoundType.Dirichlet,
+                "func": lambda x, t: np.zeros_like(t)
+            },
+            "ub": {
+                "type": BoundType.Neumann,
+                "func": lambda x, t: np.ones_like(t)
+            }
+        }
+
+        # pricing
+        pricer = Pricer(pde, xs, ts, bc)
+        payout = curve.make_linear(K, 0, right_grad=1)
+        pricer.set_payout(payout)
+        pricer.step_back(0, FDMethod.CN)
+
+        # only check prices between [0.8 K, 1.2 K]
+        mask = (xs[1: -1] >= 0.8 * K) & (xs[1: -1] <= 1.2 * K)
+        result = pricer.get_prices()[mask]
+        answer = [get_black_scholes_price(x, K, r, q, sig, T) for x in xs[1: -1][mask]]
+        rmse = np.sqrt(np.mean(np.power(result - answer, 2)))
+        self.assertLessEqual(rmse, 0.00025518)
 
         # ========== Put ==========
         # bc
@@ -196,6 +215,32 @@ class PricerTest(unittest.TestCase):
         answer = [get_black_scholes_price(x, K, r, q, sig, T, call=False) for x in xs[1: -1][mask]]
         rmse = np.sqrt(np.mean(np.power(result - answer, 2)))
         self.assertLessEqual(rmse, 0.000290493)
+
+        # ========== Put Neumann ==========
+        # bc
+        bc = {
+            "lb": {
+                "type": BoundType.Neumann,
+                "func": lambda x, t: 100 * np.ones_like(t)
+            },
+            "ub": {
+                "type": BoundType.Dirichlet,
+                "func": lambda x, t: np.zeros_like(t)
+            }
+        }
+
+        # pricing
+        pricer = Pricer(pde, xs, ts, bc)
+        payout = curve.make_linear(K, 0, left_grad=-1)
+        pricer.set_payout(payout)
+        pricer.step_back(0, FDMethod.CN)
+
+        # only check prices between [0.8 K, 1.2 K]
+        mask = (xs[1: -1] >= 0.8 * K) & (xs[1: -1] <= 1.2 * K)
+        result = pricer.get_prices()[mask]
+        answer = [get_black_scholes_price(x, K, r, q, sig, T, call=False) for x in xs[1: -1][mask]]
+        rmse = np.sqrt(np.mean(np.power(result - answer, 2)))
+        self.assertLessEqual(rmse, 0.000290493)  # TODO: why this is the same as above?
 
 
 if __name__ == "__main__":

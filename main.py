@@ -20,7 +20,7 @@ pde = BlackScholesPDE(r, q, sig)
 bc = {
     "lb": {
         "type": BoundType.Dirichlet,
-        "func": lambda x, t: x * np.exp(-q * (T - t))
+        "func": lambda x, t: np.ones_like(t) * 100000
     },
     "ub": {
         "type": BoundType.Dirichlet,
@@ -39,8 +39,8 @@ mask = (xs[1: -1] >= 0.8 * K) & (xs[1: -1] <= 1.2 * K)
 result = pricer.get_prices()[mask]
 answer = [get_black_scholes_price(x, K, r, q, sig, T, call=False) for x in xs[1: -1][mask]]
 rmse = np.sqrt(np.mean(np.power(result - answer, 2)))
-print(pricer.get_price(S))
 print(rmse)
+print(pricer.get_price(100))
 
 
 
