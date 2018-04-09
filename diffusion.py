@@ -73,7 +73,7 @@ class BlackScholesPDE(Diffusion):
         self.sig2 = sig * sig
 
     def _drift(self, x, t):
-        return self.r * x
+        return (self.r - self.q) * x
 
     def _diffusion(self, x, t):
         return 0.5 * self.sig2 * x * x
