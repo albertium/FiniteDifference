@@ -35,13 +35,16 @@ class Pricer:
 
         # pre-process boundary conditions
         for key, bc in boundary_condition.items():
-            if self.bc["type"] == BoundType.Dirichlet:
-                setattr(Pricer, key, bc["func"](xs[bc["idx"]], ts))
-                self.lb = self.bc["lb"](xs[0], ts)
-                self.ub = self.bc["ub"](xs[-1], ts)
-            elif self.bc["type"] == BoundType.Neumann:
-                self.lb = self.bc["lb"](xs[0], ts) * (xs[1] - xs[0])
-                self.ub = self.bc["ub"](xs[-1], ts) * (xs[-1] - xs[-2])
+            if bc["type"] == BoundType.Dirichlet:
+                if key == "lb":
+                    self.lb = bc["func"](xs[0], ts)
+                elif key == "ub":
+                    self.ub = bc["func"](xs[-1], ts)
+            elif bc["type"] == BoundType.Neumann:
+                if key == "lb":
+                    self.lb = bc["func"](xs[0], ts) * (xs[0] - xs[1])  # make it negative so that we can add later
+                elif key == "ub":
+                    self.ub = bc["func"](xs[-1], ts) * (xs[-1] - xs[-2])
             else:
                 raise RuntimeError("Unrecognized boundary condition type")
 
@@ -82,27 +85,41 @@ class Pricer:
 
     def _update_boundary_condition(self, A=None, B=None):
         if B is not None:
-            if self.bc["type"] == BoundType.Dirichlet:
-                e2 = (B[0, 0] * self.lb[self.curr + 1], B[-1, 2] * self.ub[self.curr + 1])
-            elif self.bc["type"] == BoundType.Neumann:
-                e2 = (
-                    B[0, 0] * (self.state[0] - self.lb[self.curr + 1]),
-                    B[0, 0] * (self.state[-1] + self.ub[self.curr + 1])
-                )
-            else:
-                raise RuntimeError("Unrecognized boundary condition type")
+            e2 = np.zeros(2)
+            for key, bc in self.bc.items():
+                if key == "lb":
+                    m, ref, idx = B[0, 0], self.lb, 0
+                elif key == "ub":
+                    m, ref, idx = B[-1, 2], self.ub, -1
+                else:
+                    raise RuntimeError("Unrecognized bound")
+
+                if bc["type"] == BoundType.Dirichlet:
+                    e2[idx] = m * ref[self.curr + 1]
+                elif self.bc["type"] == BoundType.Neumann:
+                    e2[idx] = m * self.state[idx] + ref[self.curr + 1]
+                else:
+                    raise RuntimeError("Unrecognized boundary condition type")
         else:
             e2 = None
 
         if A is not None:
-            if self.bc["type"] == BoundType.Dirichlet:
-                e1 = (A[0, 0] * self.lb[self.curr], A[-1, 2] * self.ub[self.curr])
-            elif self.bc["type"] == BoundType.Neumann:
-                A[0, 1] += A[0, 0]
-                A[-1, 1] += A[-1, 2]
-                e1 = (-A[0, 0] * self.lb[self.curr], A[-1, 2] * self.ub[self.curr])
-            else:
-                raise RuntimeError("Unrecognized boundary condition type")
+            e1 = np.zeros(2)
+            for key, bc in self.bc.items():
+                if key == "lb":
+                    m, ref, idx = A[0, 0], self.lb, 0
+                elif key == "ub":
+                    m, ref, idx = A[-1, 2], self.ub, -1
+                else:
+                    raise RuntimeError("Unrecognized bound")
+
+                if bc["type"] == BoundType.Dirichlet:
+                    e1[idx] = m * ref[self.curr]
+                elif bc["type"] == BoundType.Neumann:
+                    A[idx, 1] += A[idx, 1 - idx]  # combine A[0, 1] += A[0, 0] and A[-1, 1] += A[-1, 2]
+                    e1[idx] = m * ref[self.curr]
+                else:
+                    raise RuntimeError("Unrecognized boundary condition type")
         else:
             e1 = None
 

@@ -140,10 +140,22 @@ class PricerTest(unittest.TestCase):
 
         # ========== Call ==========
         # bc
+        # bc = {
+        #     "type": BoundType.Dirichlet,
+        #     "lb": lambda x, t: np.zeros_like(t),
+        #     "ub": lambda x, t: x * np.exp(-q * (T - t)) - K * np.exp(-r * (T - t)),
+        # }
+
+        # bc
         bc = {
-            "type": BoundType.Dirichlet,
-            "lb": lambda x, t: np.zeros_like(t),
-            "ub": lambda x, t: x * np.exp(-q * (T - t)) - K * np.exp(-r * (T - t)),
+            "lb": {
+                "type": BoundType.Dirichlet,
+                "func": lambda x, t: np.zeros_like(t)
+            },
+            "ub": {
+                "type": BoundType.Dirichlet,
+                "func": lambda x, t: x * np.exp(-q * (T - t)) - K * np.exp(-r * (T - t))
+            }
         }
 
         # pricing
@@ -162,9 +174,14 @@ class PricerTest(unittest.TestCase):
         # ========== Put ==========
         # bc
         bc = {
-            "type": BoundType.Dirichlet,
-            "lb": lambda x, t: x * np.ones_like(t),  # with or without discounting doesn't make noticeable difference
-            "ub": lambda x, t: np.zeros_like(t),
+            "lb": {
+                "type": BoundType.Dirichlet,
+                "func": lambda x, t: x * np.exp(-q * (T - t))
+            },
+            "ub": {
+                "type": BoundType.Dirichlet,
+                "func": lambda x, t: np.zeros_like(t)
+            }
         }
 
         # pricing

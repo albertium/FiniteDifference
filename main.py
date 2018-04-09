@@ -18,9 +18,14 @@ pde = BlackScholesPDE(r, q, sig)
 
 # bc
 bc = {
-    "type": BoundType.Neumann,
-    "lb": lambda x, t: x * np.exp(-q * (T - t)),
-    "ub": lambda x, t: np.zeros_like(t)
+    "lb": {
+        "type": BoundType.Dirichlet,
+        "func": lambda x, t: x * np.exp(-q * (T - t))
+    },
+    "ub": {
+        "type": BoundType.Dirichlet,
+        "func": lambda x, t: np.zeros_like(t)
+    }
 }
 
 # pricing
