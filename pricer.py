@@ -33,6 +33,17 @@ class Pricer:
         self.state = None
         self.curr = len(ts) - 2
 
+        self.conds = {
+            BoundType.Dirichlet: {
+                "lb": np.array([1, 0, 0]),
+                "ub": np.array([0, 0, 1])
+            },
+            BoundType.Neumann: {
+                "lb": np.array([-1, 1, 0]),
+                "ub": np.array([0, -1, 1])
+            }
+        }
+
         # pre-process boundary conditions
         for key, bc in boundary_condition.items():
             if bc["type"] == BoundType.Dirichlet:
@@ -42,7 +53,7 @@ class Pricer:
                     self.ub = bc["func"](xs[-1], ts)
             elif bc["type"] == BoundType.Neumann:
                 if key == "lb":
-                    self.lb = bc["func"](xs[0], ts) * (xs[0] - xs[1])  # make it negative so that we can add later
+                    self.lb = bc["func"](xs[0], ts) * (xs[1] - xs[0])
                 elif key == "ub":
                     self.ub = bc["func"](xs[-1], ts) * (xs[-1] - xs[-2])
             else:
@@ -88,18 +99,11 @@ class Pricer:
             e2 = np.zeros(2)
             for key, bc in self.bc.items():
                 if key == "lb":
-                    m, ref, idx = B[0, 0], self.lb, 0
+                    e2[0] = self._solve_boundary(B[0, :], self.conds[bc["type"]]["lb"], self.lb[self.curr + 1], True)
                 elif key == "ub":
-                    m, ref, idx = B[-1, 2], self.ub, -1
+                    e2[1] = self._solve_boundary(B[-1, :], self.conds[bc["type"]]["ub"], self.ub[self.curr + 1], False)
                 else:
                     raise RuntimeError("Unrecognized bound")
-
-                if bc["type"] == BoundType.Dirichlet:
-                    e2[idx] = m * ref[self.curr + 1]
-                elif bc["type"] == BoundType.Neumann:
-                    e2[idx] = m * (self.state[idx] + ref[self.curr + 1])
-                else:
-                    raise RuntimeError("Unrecognized boundary condition type")
         else:
             e2 = None
 
@@ -107,26 +111,18 @@ class Pricer:
             e1 = np.zeros(2)
             for key, bc in self.bc.items():
                 if key == "lb":
-                    m, ref, idx = A[0, 0], self.lb, 0
+                    e1[0] = self._solve_boundary(A[0, :], self.conds[bc["type"]]["lb"], self.lb[self.curr], True)
                 elif key == "ub":
-                    m, ref, idx = A[-1, 2], self.ub, -1
+                    e1[0] = self._solve_boundary(A[-1, :], self.conds[bc["type"]]["ub"], self.ub[self.curr], False)
                 else:
                     raise RuntimeError("Unrecognized bound")
-
-                if bc["type"] == BoundType.Dirichlet:
-                    e1[idx] = m * ref[self.curr]
-                elif bc["type"] == BoundType.Neumann:
-                    A[idx, 1] += A[idx, 1 - idx]  # combine A[0, 1] += A[0, 0] and A[-1, 1] += A[-1, 2]
-                    e1[idx] = m * ref[self.curr]
-                else:
-                    raise RuntimeError("Unrecognized boundary condition type")
         else:
             e1 = None
 
         return e1, e2
 
     @staticmethod
-    def _solve_boundary(mat, cond, val, left=True):
+    def _solve_boundary(mat, cond, val, left: bool=True):
         """
         helper function for _update_boundary_condition
         :param mat: A[0, -1: 1] or A[-1, n-1: n+1]
