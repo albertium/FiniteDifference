@@ -125,3 +125,19 @@ class Pricer:
 
         return e1, e2
 
+    @staticmethod
+    def _solve_boundary(mat, cond, val, left=True):
+        """
+        helper function for _update_boundary_condition
+        :param mat: A[0, -1: 1] or A[-1, n-1: n+1]
+        :param cond: for Dirichlet, it would be [1, 0, 0] or [0, 0, 1]
+        :param val: bound value
+        :param left: eliminate left side or right side
+        :return:
+        """
+        if left:
+            ratio = mat[0] / cond[0]
+        else:
+            ratio = mat[-1] / cond[-1]
+        mat -= ratio * cond
+        return -ratio * val

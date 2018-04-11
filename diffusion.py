@@ -6,6 +6,8 @@ diffusion classes
 import abc
 import numpy as np
 
+from curve import Spline, make_cubic
+
 
 class Diffusion(metaclass=abc.ABCMeta):
     def __init__(self):
@@ -80,3 +82,46 @@ class BlackScholesPDE(Diffusion):
 
     def _reaction(self, x, t):
         return self.r
+
+
+class VasicekPDE(Diffusion):
+    def __init__(self, r0, theta, kappa, sig):
+        super().__init__()
+        self.r0 = r0
+        self.theta = theta
+        self.kappa = kappa
+        self.sig = sig
+        self.sig2 = sig * sig
+
+    def _drift(self, x, t):
+        return self.theta - self.kappa * x
+
+    def _diffusion(self, x, t):
+        return 0.5 * self.sig2
+
+    def _reaction(self, x, t):
+        return x
+
+
+class HullWhitePDE(Diffusion):
+    def __init__(self, zero_curve: Spline, alpha=0.05, sig=0.1):
+        super().__init__()
+        f_tmp = lambda t: zero_curve.get_derivative()(t) * t + zero_curve(t)
+        xs = np.linspace(zero_curve.xs[0], zero_curve.xs[-1], 50)
+        self.f_curve = make_cubic(xs, f_tmp(xs))
+        theta_tmp = lambda t: self.f_curve.get_derivative()(t) + alpha * self.f_curve(t) \
+                              + sig * sig * (1 - np.exp(-alpha * t)) / 2 / alpha
+        self.theta = make_cubic(xs, theta_tmp(xs))
+
+        self.alpha = alpha
+        self.sig = sig
+        self.sig2 = sig * sig
+
+    def _drift(self, x, t):
+        return self.theta(t) - self.alpha * x
+
+    def _diffusion(self, x, t):
+        return 0.5 * self.sig2
+
+    def _reaction(self, x, t):
+        return x

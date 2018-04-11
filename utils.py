@@ -6,12 +6,20 @@ Plotting tools
 import numpy as np
 import plotly.offline as offline
 import plotly.graph_objs as go
+from typing import Union
 
 
-def plot_lines(data: dict, xlims: list=None, plot_name: str="untitled") -> None:
+def plot_lines(data: Union[dict, list], xlims: Union[tuple, list]=None, plot_name: str="untitled") -> None:
     N = 300
     if xlims is not None:
         assert(len(xlims) == 2)
+
+    tmp = {}
+    if isinstance(data, list):
+        for idx, curve in enumerate(data):
+            tmp["curve " + str(idx)] = curve
+        data = tmp
+
     fig = []
     for name, data in data.items():
         if isinstance(data, list):

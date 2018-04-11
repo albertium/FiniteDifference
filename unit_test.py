@@ -4,9 +4,9 @@ import numpy as np
 
 import linear_alg
 import curve
-from diffusion import HeatPDE, BlackScholesPDE
+from diffusion import HeatPDE, BlackScholesPDE, VasicekPDE
 from pricer import Pricer
-from pricer_helper import get_black_scholes_price
+from pricer_helper import get_black_scholes_price, get_vasicek_bond_price
 from mtypes import FDMethod, BoundType
 
 
@@ -221,7 +221,7 @@ class PricerTest(unittest.TestCase):
         bc = {
             "lb": {
                 "type": BoundType.Neumann,
-                "func": lambda x, t: 100 * np.ones_like(t)
+                "func": lambda x, t: np.ones_like(t)
             },
             "ub": {
                 "type": BoundType.Dirichlet,
@@ -241,6 +241,31 @@ class PricerTest(unittest.TestCase):
         answer = [get_black_scholes_price(x, K, r, q, sig, T, call=False) for x in xs[1: -1][mask]]
         rmse = np.sqrt(np.mean(np.power(result - answer, 2)))
         self.assertLessEqual(rmse, 0.000290493)  # TODO: why this is the same as above?
+
+
+class DiffusionTest(unittest.TestCase):
+    def test_vasicek(self):
+        # TODO: check to see if the lower bound Neumann condition implementation is correct
+        pde = VasicekPDE(0.05, 0.01 * 1, 1, 0.07)
+        xs = np.linspace(-0.3, 0.3, 101)
+        ts = np.linspace(0, 1, 41)
+        bc = {
+            "lb": {
+                "type": BoundType.Neumann,
+                "func": lambda x, t: np.ones_like(t)
+            },
+            "ub": {
+                "type": BoundType.Neumann,
+                "func": lambda x, t: np.ones_like(t)
+            }
+        }
+
+        pricer = Pricer(pde, xs, ts, bc)
+        pricer.set_payout(lambda x: np.ones_like(x))
+        pricer.step_back(0, FDMethod.CN)
+        res = pricer.get_price(0.05)
+        ans = get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1)
+        self.assertLessEqual(abs(res / ans - 1), 7.63002E-7)
 
 
 if __name__ == "__main__":
