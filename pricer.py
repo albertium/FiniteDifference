@@ -8,6 +8,17 @@ from linear_alg import solve_axbd
 
 
 class Pricer:
+    conds = {
+        BoundType.Dirichlet: {
+            "lb": np.array([1, 0, 0]),
+            "ub": np.array([0, 0, 1])
+        },
+        BoundType.Neumann: {
+            "lb": np.array([-1, 1, 0]),
+            "ub": np.array([0, -1, 1])
+        }
+    }
+
     def __init__(self, pde: Diffusion, xs: np.ndarray, ts, boundary_condition: dict=None):
         """
         boundary_condition example:
@@ -32,17 +43,6 @@ class Pricer:
         self.pde.set_xs(xs)
         self.state = None
         self.curr = len(ts) - 2
-
-        self.conds = {
-            BoundType.Dirichlet: {
-                "lb": np.array([1, 0, 0]),
-                "ub": np.array([0, 0, 1])
-            },
-            BoundType.Neumann: {
-                "lb": np.array([-1, 1, 0]),
-                "ub": np.array([0, -1, 1])
-            }
-        }
 
         # pre-process boundary conditions
         for key, bc in boundary_condition.items():

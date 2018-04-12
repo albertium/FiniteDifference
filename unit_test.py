@@ -245,7 +245,6 @@ class PricerTest(unittest.TestCase):
 
 class DiffusionTest(unittest.TestCase):
     def test_vasicek(self):
-        # TODO: check to see if the lower bound Neumann condition implementation is correct
         pde = VasicekPDE(0.05, 0.01 * 1, 1, 0.07)
         xs = np.linspace(-0.3, 0.3, 101)
         ts = np.linspace(0, 1, 41)
@@ -265,7 +264,7 @@ class DiffusionTest(unittest.TestCase):
         pricer.step_back(0, FDMethod.CN)
         res = pricer.get_price(0.05)
         ans = get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1)
-        self.assertLessEqual(abs(res / ans - 1), 7.63002E-7)
+        self.assertLessEqual(abs(res / ans - 1), 7.629062E-7)
 
 
 if __name__ == "__main__":

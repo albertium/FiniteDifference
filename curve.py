@@ -17,7 +17,7 @@ class Curve(metaclass=abc.ABCMeta):
 
 
 class Spline(Curve):
-    def __init__(self, xs, coefs):
+    def __init__(self, xs: np.ndarray, coefs: np.ndarray):
         assert(xs.ndim == 1)
         assert(coefs.ndim == 2)
         assert(xs.shape[0] + 1 == coefs.shape[0])
@@ -61,11 +61,23 @@ class Spline(Curve):
         return result
 
 
+class PiecewiseConstantCurve(Spline):
+    def __init__(self, xs, ys):
+        if isinstance(xs, list):
+            xs = np.array(xs)
+        ys = np.insert(ys, -1, ys[-1])
+        super().__init__(np.array(xs), np.array(ys)[:, None])
+
+
 def make_linear(xs, ys, left_grad=0, right_grad=0):
     if isinstance(xs, (int, float)):
         xs = np.array([xs])
+    elif isinstance(xs, list):
+        xs = np.array(xs)
     if isinstance(ys, (int, float)):
         ys = np.array([ys])
+    elif isinstance(ys, list):
+        ys = np.array(ys)
 
     coefs = np.zeros([len(xs) + 1, 2])
     coefs[1:, 0] = ys
@@ -76,8 +88,10 @@ def make_linear(xs, ys, left_grad=0, right_grad=0):
 
 
 def make_cubic(xs, ys) -> Spline:
-    assert(isinstance(xs, np.ndarray))
-    assert(isinstance(ys, np.ndarray))
+    if isinstance(xs, list):
+        xs = np.array(xs)
+    if isinstance(ys, list):
+        ys = np.array(ys)
     assert(xs.ndim == 1)
     assert(ys.ndim == 1)
     assert(xs.shape[0] == ys.shape[0])

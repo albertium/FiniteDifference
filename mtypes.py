@@ -12,3 +12,7 @@ class BoundType(Enum):
     Dirichlet = 1
     Neumann = 2
 
+
+class OptionType(Enum):
+    Call = 1
+    Put = 2
