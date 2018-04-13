@@ -10,7 +10,8 @@ from curve import Spline, make_cubic
 
 
 class Diffusion(metaclass=abc.ABCMeta):
-    def __init__(self):
+    def __init__(self, x0):
+        self.x0 = x0
         self.xs = None
         self.dx = None
         self.d2x = None
@@ -68,8 +69,8 @@ class HeatPDE(Diffusion):
 
 
 class BlackScholesPDE(Diffusion):
-    def __init__(self, r, q, sig):
-        super().__init__()
+    def __init__(self, S0, r, q, sig):
+        super().__init__(S0)
         self.r = r
         self.q = q
         self.sig2 = sig * sig
@@ -86,7 +87,7 @@ class BlackScholesPDE(Diffusion):
 
 class VasicekPDE(Diffusion):
     def __init__(self, r0, theta, kappa, sig):
-        super().__init__()
+        super().__init__(r0)
         self.r0 = r0
         self.theta = theta
         self.kappa = kappa
@@ -105,7 +106,7 @@ class VasicekPDE(Diffusion):
 
 class HullWhitePDE(Diffusion):
     def __init__(self, zero_curve: Spline, alpha=0.05, sig=0.1):
-        super().__init__()
+        super().__init__(0)
         f_tmp = lambda t: zero_curve.get_derivative()(t) * t + zero_curve(t)
         xs = np.linspace(zero_curve.xs[0], zero_curve.xs[-1], 50)
         self.f_curve = make_cubic(xs, f_tmp(xs))

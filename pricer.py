@@ -5,6 +5,7 @@ from curve import make_linear
 from diffusion import Diffusion
 from mtypes import FDMethod, BoundType
 from linear_alg import solve_axbd
+from tradable import Tradable
 
 
 class Pricer:
@@ -19,7 +20,18 @@ class Pricer:
         }
     }
 
-    def __init__(self, pde: Diffusion, xs: np.ndarray, ts, boundary_condition: dict=None):
+    def __init__(self):
+        self.pde = None
+        self.xs = None
+        self.ts = None
+        self.N = 0
+        self.bcs = None
+        self.lb = None
+        self.ub = None
+        self.curr = 0
+        self.state = None
+
+    def price(self, security: Tradable, pde: Diffusion, xs: np.ndarray):
         """
         boundary_condition example:
         {
@@ -36,34 +48,42 @@ class Pricer:
         }
         """
         self.xs = xs
-        self.ts = ts
+        self.ts = security.ts
         self.N = len(xs)
-        self.bc = boundary_condition
+        self.bcs = security.bcs
         self.pde = pde
         self.pde.set_xs(xs)
         self.state = None
-        self.curr = len(ts) - 2
+        self.curr = len(self.ts) - 2
 
         # pre-process boundary conditions
-        for key, bc in boundary_condition.items():
+        for key, bc in self.bcs.items():
             if bc["type"] == BoundType.Dirichlet:
                 if key == "lb":
-                    self.lb = bc["func"](xs[0], ts)
+                    self.lb = bc["func"](xs[0], self.ts)
                 elif key == "ub":
-                    self.ub = bc["func"](xs[-1], ts)
+                    self.ub = bc["func"](xs[-1], self.ts)
             elif bc["type"] == BoundType.Neumann:
                 if key == "lb":
-                    self.lb = bc["func"](xs[0], ts) * (xs[1] - xs[0])
+                    self.lb = bc["func"](xs[0], self.ts) * (xs[1] - xs[0])
                 elif key == "ub":
-                    self.ub = bc["func"](xs[-1], ts) * (xs[-1] - xs[-2])
+                    self.ub = bc["func"](xs[-1], self.ts) * (xs[-1] - xs[-2])
             else:
                 raise RuntimeError("Unrecognized boundary condition type")
 
-    def set_payout(self, payout: callable):
+        # pricing
+        self._set_payout(security.payout)
+        self._step_back(0, FDMethod.CN)
+        return self._get_price(pde.x0)
+
+    def get_prices(self):
+        return self.state.copy()
+
+    def _set_payout(self, payout: callable):
         self.state = payout(self.xs[1:-1])
         self.curr = len(self.ts) - 2
 
-    def step_back(self, t, method=FDMethod.Explicit):
+    def _step_back(self, t, method=FDMethod.Explicit):
         while self.curr >= 0 and self.ts[self.curr] >= t:
             t0 = self.ts[self.curr]
             t1 = self.ts[self.curr + 1]
@@ -87,17 +107,14 @@ class Pricer:
             self.state = solve_axbd(self.state, A=A, B=B, e1=e1, e2=e2)
             self.curr -= 1
 
-    def get_price(self, x):
+    def _get_price(self, x):
         spline = make_linear(self.xs[1: -1], self.state)
         return spline(x)
-
-    def get_prices(self):
-        return self.state.copy()
 
     def _update_boundary_condition(self, A=None, B=None):
         if B is not None:
             e2 = np.zeros(2)
-            for key, bc in self.bc.items():
+            for key, bc in self.bcs.items():
                 if key == "lb":
                     e2[0] = self._solve_boundary(B[0, :], self.conds[bc["type"]]["lb"], self.lb[self.curr + 1], True)
                 elif key == "ub":
@@ -109,11 +126,11 @@ class Pricer:
 
         if A is not None:
             e1 = np.zeros(2)
-            for key, bc in self.bc.items():
+            for key, bc in self.bcs.items():
                 if key == "lb":
                     e1[0] = self._solve_boundary(A[0, :], self.conds[bc["type"]]["lb"], self.lb[self.curr], True)
                 elif key == "ub":
-                    e1[0] = self._solve_boundary(A[-1, :], self.conds[bc["type"]]["ub"], self.ub[self.curr], False)
+                    e1[1] = self._solve_boundary(A[-1, :], self.conds[bc["type"]]["ub"], self.ub[self.curr], False)
                 else:
                     raise RuntimeError("Unrecognized bound")
         else:
@@ -136,4 +153,4 @@ class Pricer:
         else:
             ratio = mat[-1] / cond[-1]
         mat -= ratio * cond
-        return -ratio * val
+        return ratio * val
