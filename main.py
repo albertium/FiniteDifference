@@ -1,14 +1,16 @@
 
-import numpy as np
-import curve
-import utils
-from linear_alg import solve_axbd
-from pricer import Pricer
-from diffusion import VasicekPDE, BlackScholesPDE
-from mtypes import FDMethod, BoundType, OptionType
-from pricer_helper import get_vasicek_bond_price, get_black_scholes_price
-from tradable import Bond, Option
+import math
+from tradable import Bond
+from calibrator import calibrate_hull_white
+from diffusion import HullWhitePDE
+from pricer import GridPricer
 
 
-a = [1, 2, 3]
-print(np.searchsorted(a, 0.9))
+zc_bonds = [Bond(1, math.exp(-0.015)), Bond(2, math.exp(-0.02 * 2)), Bond(3, math.exp(-0.025 * 3))]
+pde = HullWhitePDE(0.01, -0.3, 0.3)
+pricer = GridPricer()
+calibrate_hull_white(pde, pricer, zc_bonds)
+
+for zc in zc_bonds:
+    res = pricer.price(zc, pde)
+    print(res, " ", zc.price)

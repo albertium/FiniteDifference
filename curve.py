@@ -68,6 +68,10 @@ class PiecewiseConstantCurve(Spline):
         ys = np.insert(ys, -1, ys[-1])
         super().__init__(np.array(xs), np.array(ys)[:, None])
 
+    def __setitem__(self, key, value):
+        assert(isinstance(key, int))
+        self.coefs[key, 0] = value
+
 
 def make_linear(xs, ys, left_grad=0, right_grad=0):
     if isinstance(xs, (int, float)):

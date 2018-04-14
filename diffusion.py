@@ -6,12 +6,14 @@ diffusion classes
 import abc
 import numpy as np
 
-from curve import Spline, make_cubic
+from curve import PiecewiseConstantCurve
 
 
 class Diffusion(metaclass=abc.ABCMeta):
-    def __init__(self, x0):
-        self.x0 = x0
+    def __init__(self, x0, x_min, x_max):
+        self._x0 = x0
+        self._x_min = x_min
+        self._x_max = x_max
         self.xs = None
         self.dx = None
         self.d2x = None
@@ -22,6 +24,18 @@ class Diffusion(metaclass=abc.ABCMeta):
         self.d2x = xs[2:] - xs[:-2]  # pre-cache to save computation
         self.dx = xs[1:] - xs[:-1]  # two ends are reserved for bounds if needed
         self.N = len(xs)
+
+    @property
+    def x0(self):
+        return self._x0
+
+    @property
+    def x_min(self):
+        return self._x_min
+
+    @property
+    def x_max(self):
+        return self._x_max
 
     @abc.abstractclassmethod
     def _drift(self, x, t):
@@ -69,8 +83,8 @@ class HeatPDE(Diffusion):
 
 
 class BlackScholesPDE(Diffusion):
-    def __init__(self, S0, r, q, sig):
-        super().__init__(S0)
+    def __init__(self, S0, S_min, S_max, r, q, sig):
+        super().__init__(S0, S_min, S_max)
         self.r = r
         self.q = q
         self.sig2 = sig * sig
@@ -86,8 +100,8 @@ class BlackScholesPDE(Diffusion):
 
 
 class VasicekPDE(Diffusion):
-    def __init__(self, r0, theta, kappa, sig):
-        super().__init__(r0)
+    def __init__(self, r0, r_min, r_max, theta, kappa, sig):
+        super().__init__(r0, r_min, r_max)
         self.r0 = r0
         self.theta = theta
         self.kappa = kappa
@@ -105,21 +119,30 @@ class VasicekPDE(Diffusion):
 
 
 class HullWhitePDE(Diffusion):
-    def __init__(self, zero_curve: Spline, alpha=0.05, sig=0.1):
-        super().__init__(0)
-        f_tmp = lambda t: zero_curve.get_derivative()(t) * t + zero_curve(t)
-        xs = np.linspace(zero_curve.xs[0], zero_curve.xs[-1], 50)
-        self.f_curve = make_cubic(xs, f_tmp(xs))
-        theta_tmp = lambda t: self.f_curve.get_derivative()(t) + alpha * self.f_curve(t) \
-                              + sig * sig * (1 - np.exp(-alpha * t)) / 2 / alpha
-        self.theta = make_cubic(xs, theta_tmp(xs))
-
-        self.alpha = alpha
+    def __init__(self, r0, r_min, r_max, kappa=0.05, sig=0.1, theta: PiecewiseConstantCurve=None):
+        super().__init__(r0, r_min, r_max)
+        self.kappa = kappa
         self.sig = sig
-        self.sig2 = sig * sig
+        self.sig2 = sig ** 2
+        self.theta = theta
+
+    def reset_theta(self, xs):
+        self.theta = PiecewiseConstantCurve(xs, np.zeros_like(xs))
+
+    def __setitem__(self, key, value):
+        if key == "kappa":
+            self.kappa = value
+        elif key == "sig":
+            self.sig = value
+            self.sig2 = value ** 2
+        elif isinstance(key, tuple) and key[0] == "theta":
+            self.theta[key[1]] = value
+        else:
+            raise RuntimeError("Unrecognized parameter name")
 
     def _drift(self, x, t):
-        return self.theta(t) - self.alpha * x
+        assert isinstance(self.theta, PiecewiseConstantCurve), "theta is not set"
+        return self.theta(t) - self.kappa * x
 
     def _diffusion(self, x, t):
         return 0.5 * self.sig2

@@ -1,5 +1,6 @@
 
 import numpy as np
+import abc
 
 from curve import make_linear
 from diffusion import Diffusion
@@ -8,7 +9,14 @@ from linear_alg import solve_axbd
 from tradable import Tradable
 
 
-class Pricer:
+class Pricer(metaclass=abc.ABCMeta):
+    # TODO: should move xs into pde
+    @abc.abstractclassmethod
+    def price(self, security: Tradable, pde: Diffusion):
+        pass
+
+
+class GridPricer(Pricer):
     conds = {
         BoundType.Dirichlet: {
             "lb": np.array([1, 0, 0]),
@@ -31,7 +39,7 @@ class Pricer:
         self.curr = 0
         self.state = None
 
-    def price(self, security: Tradable, pde: Diffusion, xs: np.ndarray):
+    def price(self, security: Tradable, pde: Diffusion):
         """
         boundary_condition example:
         {
@@ -47,12 +55,12 @@ class Pricer:
             }
         }
         """
-        self.xs = xs
+        self.xs = np.linspace(pde.x_min, pde.x_max, security.steps)  # TODO: why increase grid size get better result?
         self.ts = security.ts
-        self.N = len(xs)
+        self.N = len(self.xs)
         self.bcs = security.bcs
         self.pde = pde
-        self.pde.set_xs(xs)
+        self.pde.set_xs(self.xs)  # TODO: xs will be based on both tradable and diffusion, which will be added later
         self.state = None
         self.curr = len(self.ts) - 2
 
@@ -60,14 +68,14 @@ class Pricer:
         for key, bc in self.bcs.items():
             if bc["type"] == BoundType.Dirichlet:
                 if key == "lb":
-                    self.lb = bc["func"](xs[0], self.ts)
+                    self.lb = bc["func"](self.xs[0], self.ts)
                 elif key == "ub":
-                    self.ub = bc["func"](xs[-1], self.ts)
+                    self.ub = bc["func"](self.xs[-1], self.ts)
             elif bc["type"] == BoundType.Neumann:
                 if key == "lb":
-                    self.lb = bc["func"](xs[0], self.ts) * (xs[1] - xs[0])
+                    self.lb = bc["func"](self.xs[0], self.ts) * (self.xs[1] - self.xs[0])
                 elif key == "ub":
-                    self.ub = bc["func"](xs[-1], self.ts) * (xs[-1] - xs[-2])
+                    self.ub = bc["func"](self.xs[-1], self.ts) * (self.xs[-1] - self.xs[-2])
             else:
                 raise RuntimeError("Unrecognized boundary condition type")
 

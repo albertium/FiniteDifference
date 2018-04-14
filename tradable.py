@@ -21,12 +21,22 @@ class Tradable(metaclass=abc.ABCMeta):
         }
     }
 
-    def __init__(self, ts, payout, bcs, price=None, mask=None):
+    def __init__(self, ts, payout, bcs, steps=101, price=None, mask=None):
         self.ts = ts
+        self._T = ts[-1]
         self.payout = payout
         self.bcs = bcs
+        self._steps = steps
         self.price = price
         self.mask = mask
+
+    @property
+    def T(self):
+        return self._T
+
+    @property
+    def steps(self):
+        return self._steps
 
 
 class HeatSecurity(Tradable):
@@ -45,7 +55,7 @@ class HeatSecurity(Tradable):
         def payout(x):
             return np.exp(x)
 
-        super().__init__(ts, payout, bcs)
+        super().__init__(ts, payout, bcs, steps=9)
 
 
 class Option(Tradable):
@@ -79,14 +89,14 @@ class Option(Tradable):
         if type == OptionType.Put:
             bcs["lb"], bcs["ub"] = bcs["ub"], bcs["lb"]
 
-        super().__init__(ts, payout, bcs, mask=mask, price=price)
+        super().__init__(ts, payout, bcs, mask=mask, steps=601, price=price)
         self.K = K
 
 
 class Bond(Tradable):
     # TODO: allow cash flows
     def __init__(self, T, price=None):
-        ts = np.linspace(0, T, 41)
+        ts = np.linspace(0, T, T * 40 + 1)
 
         def payout(x): return np.ones_like(x)
-        super().__init__(ts, payout, self.bc_template["Standard Neumann"], price=price)
+        super().__init__(ts, payout, self.bc_template["Standard Neumann"], steps=101, price=price)
