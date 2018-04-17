@@ -106,7 +106,7 @@ class VasicekPDE(Diffusion):
         self.theta = theta
         self.kappa = kappa
         self.sig = sig
-        self.sig2 = sig * sig
+        self.sig2 = sig ** 2
 
     def _drift(self, x, t):
         return self.theta - self.kappa * x
