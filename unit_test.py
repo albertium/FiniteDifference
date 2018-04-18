@@ -6,9 +6,9 @@ import linear_alg
 import curve
 from diffusion import HeatPDE, BlackScholesPDE, VasicekPDE, HullWhitePDE
 from pricer import GridPricer
-from pricer_helper import get_black_scholes_price, get_vasicek_bond_price
+from pricer_helper import get_black_scholes_price, get_vasicek_bond_price, get_vasicek_bond_option_price
 from mtypes import OptionType
-from tradable import Bond, Option, HeatSecurity
+from tradable import Bond, Option, HeatSecurity, Underlying
 from calibrator import calibrate_hull_white
 
 
@@ -112,10 +112,9 @@ class CurveTest(unittest.TestCase):
 class PricerTest(unittest.TestCase):
     def test_heat_dirichlet(self):
         xs = np.linspace(-2, 2, 9)
-        ts = np.linspace(0, 1, 9)
         pde = HeatPDE(1, -2, 2)
 
-        sec = HeatSecurity(ts)
+        sec = HeatSecurity(1)
         pricer = GridPricer()
         pricer.price(sec, pde)
 
@@ -132,11 +131,8 @@ class PricerTest(unittest.TestCase):
         """
         S, K, r, q, sig, T = 100, 100, 0.05, 0.02, 0.35, 1
         S_max = 300
-        steps = 601
         xs = np.linspace(0, S_max, 601)  # option default to 601 steps
-        ts = np.linspace(0, T, 101)
-
-        opt = Option(K, ts, OptionType.Call)
+        opt = Option(K, 0, T, 1/101, OptionType.Call) @ Underlying(T)
         pde = BlackScholesPDE(S, 0, S_max, r, q, sig)
 
         # pricing
@@ -154,9 +150,7 @@ class PricerTest(unittest.TestCase):
         S, K, r, q, sig, T = 100, 100, 0.05, 0.02, 0.35, 1
         S_max = 300
         xs = np.linspace(0, S_max, 601)  # option default to 601 steps
-        ts = np.linspace(0, T, 101)
-
-        opt = Option(K, ts, OptionType.Put)
+        opt = Option(K, 0, T, dt=1/101, option_type=OptionType.Put) @ Underlying(T)
         pde = BlackScholesPDE(S, 0, S_max, r, q, sig)
 
         # pricing
@@ -174,16 +168,94 @@ class PricerTest(unittest.TestCase):
 class DiffusionTest(unittest.TestCase):
     def test_vasicek(self):
         pde = VasicekPDE(r0=0.05, r_min=-0.3, r_max=0.3, theta=0.01 * 1, kappa=1, sig=0.07)
-        zc_bond = Bond(T=1)
+        zc_bond = Bond(t_start=0, t_end=1)
+        pricer = GridPricer()
+        res = pricer.price(zc_bond, pde)
+        ans = get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1)
+        self.assertLessEqual(abs(res / ans - 1), 7.63009E-7)
+
+    def test_hull_white(self):
+        # test flat theta, which is equivalent to Vasicek model
+        pde = HullWhitePDE(r0=0.05, r_min=-0.3, r_max=0.3, kappa=1, sig=0.07)
+        pde.reset_theta([0.5, 0.7, 2])
+        pde.theta[0] = 0.01
+        pde.theta[1] = 0.01
+        pde.theta[2] = 0.01
+        zc_bond = Bond(t_start=0, t_end=1)
         pricer = GridPricer()
         res = pricer.price(zc_bond, pde)
         ans = get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1)
         self.assertLessEqual(abs(res / ans - 1), 7.63009E-7)
 
 
+class TradableTest(unittest.TestCase):
+    def test_tradable_addition(self):
+        pde = VasicekPDE(r0=0.05, r_min=-0.3, r_max=0.3, theta=0.01 * 1, kappa=1, sig=0.07)
+        bond = Bond(t_start=0, t_end=1) + Bond(t_start=0, t_end=0.5)
+        pricer = GridPricer()
+        res = pricer.price(bond, pde)
+        ans = get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1) + get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 0.5)
+        self.assertLessEqual(abs(res / ans - 1), 3.471492E-7)
+
+    def test_tradable_subtraction(self):
+        pde = VasicekPDE(r0=0.05, r_min=-0.3, r_max=0.3, theta=0.01 * 1, kappa=1, sig=0.07)
+        bond = Bond(t_start=0, t_end=1) - Bond(t_start=0, t_end=0.5)
+        pricer = GridPricer()
+        res = pricer.price(bond, pde)
+        ans = get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1) - get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 0.5)
+        self.assertLessEqual(abs(res / ans - 1), 5.77868E-5)  # accuracy drops because denominator is small
+
+    def test_tradable_multiplication(self):
+        pde = VasicekPDE(r0=0.05, r_min=-0.3, r_max=0.3, theta=0.01 * 1, kappa=1, sig=0.07)
+        bond = 3 * Bond(t_start=0, t_end=1)
+        pricer = GridPricer()
+        res = pricer.price(bond, pde)
+        ans = 3 * get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1)
+        self.assertLessEqual(abs(res / ans - 1), 7.62963E-7)
+
+        bond2 = Bond(0, 1, 0.5, 0.05) - 0.025 * Bond(0, 0.5)
+        res = pricer.price(bond2, pde)
+        ans = 1.025 * get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1)
+        self.assertLessEqual(abs(res / ans - 1), 7.63007E-7)
+
+    def test_tradable_chaining(self):
+        K, r0, theta, kappa, sig, T, S = 0.9802, 0.02, 0.02 * 0.8, 0.8, 0.02, 1, 2
+        opt = Option(K, 0, T, 1 / 41, OptionType.Call) @ Bond(t_start=T, t_end=S)
+        pde = VasicekPDE(r0=r0, r_min=-0.3, r_max=0.3, theta=theta, kappa=kappa, sig=sig)
+        pricer = GridPricer()
+        res = pricer.price(opt, pde)
+        ans = get_vasicek_bond_option_price(K, r0, theta, kappa, sig, T, S)
+        print(abs(res / ans - 1))
+        self.assertLessEqual(abs(res / ans - 1), 0.00018629)
+
+    def test_tradable_chaining2(self):
+        K, r0, theta, kappa, sig, T, S = 0.9802, 0.02, 0.02 * 0.8, 0.8, 0.02, 1, 2
+        opt = Option(K, 0, T, 1 / 41, OptionType.Put) @ Bond(t_start=T, t_end=S)
+        pde = VasicekPDE(r0=r0, r_min=-0.3, r_max=0.3, theta=theta, kappa=kappa, sig=sig)
+        pricer = GridPricer()
+        res = pricer.price(opt, pde)
+        ans = get_vasicek_bond_option_price(K, r0, theta, kappa, sig, T, S, OptionType.Put)
+        print(abs(res / ans - 1))
+        self.assertLessEqual(abs(res / ans - 1), 0.00019239)
+
+    def test_coupon_bond(self):
+        pde = VasicekPDE(r0=0.05, r_min=-0.3, r_max=0.3, theta=0.01 * 1, kappa=1, sig=0.07)
+        bond = Bond(t_start=0, t_end=1, coupon_dt=1/2, coupon_rate=0.05)
+        pricer = GridPricer()
+        res = pricer.price(bond, pde)
+        ans = get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1) \
+              + 0.025 * get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 1) \
+              + 0.025 * get_vasicek_bond_price(0.05, 0.01, 1, 0.07, 0.5)
+        self.assertLessEqual(abs(res / ans - 1), 7.430691E-7)
+
+
 class CalibratorTest(unittest.TestCase):
     def test_calibrate_hull_white(self):
-        zc_bonds = [Bond(1, np.exp(-0.015)), Bond(2, np.exp(-0.02 * 2)), Bond(3, np.exp(-0.025 * 3))]
+        zc_bonds = [
+            Bond(0, 1, price=np.exp(-0.015)),
+            Bond(0, 2, price=np.exp(-0.02 * 2)),
+            Bond(0, 3, price=np.exp(-0.025 * 3))
+        ]
         pde = HullWhitePDE(0.01, -0.3, 0.3)
         pricer = GridPricer()
         calibrate_hull_white(pde, pricer, zc_bonds)

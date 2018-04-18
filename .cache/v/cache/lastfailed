@@ -1,3 +1,9 @@
 {
-  "unit_test.py::PricerTest::test_heat_pde": true
+  "unit_test.py::CalibratorTest": true,
+  "unit_test.py::CurveTest": true,
+  "unit_test.py::DiffusionTest": true,
+  "unit_test.py::LinearAlgTest": true,
+  "unit_test.py::PricerTest": true,
+  "unit_test.py::PricerTest::test_heat_pde": true,
+  "unit_test.py::TradableTest": true
 }

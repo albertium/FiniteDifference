@@ -126,8 +126,8 @@ class HullWhitePDE(Diffusion):
         self.sig2 = sig ** 2
         self.theta = theta
 
-    def reset_theta(self, xs):
-        self.theta = PiecewiseConstantCurve(xs, np.zeros_like(xs))
+    def reset_theta(self, maturities):
+        self.theta = PiecewiseConstantCurve(maturities, np.zeros_like(maturities, dtype=float))
 
     def __setitem__(self, key, value):
         if key == "kappa":

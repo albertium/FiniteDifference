@@ -55,14 +55,18 @@ class GridPricer(Pricer):
             }
         }
         """
+
+        assert security.t_start == 0, "start day of a Tradable should be 0 for pricing"
         self.xs = np.linspace(pde.x_min, pde.x_max, security.steps)  # TODO: why increase grid size get better result?
         self.ts = security.ts
         self.N = len(self.xs)
+        assert self.N > 2, "number of steps should be at least 3"
         self.bcs = security.bcs
         self.pde = pde
         self.pde.set_xs(self.xs)  # TODO: xs will be based on both tradable and diffusion, which will be added later
-        self.state = None
-        self.curr = len(self.ts) - 2
+        self.state = np.zeros(self.N - 2)
+        assert len(self.ts) > 1, "number of time steps should be at least 2"
+        self.curr = len(self.ts) - 1
 
         # pre-process boundary conditions
         for key, bc in self.bcs.items():
@@ -80,21 +84,25 @@ class GridPricer(Pricer):
                 raise RuntimeError("Unrecognized boundary condition type")
 
         # pricing
-        self._set_payout(security.payout)
+        for t, actions in reversed(security.events):
+            self._step_back(t, FDMethod.CN)  # step back to the time of the event
+            for action_type, action in actions:
+                if action_type == "payout":
+                    self.state += action(self.xs[1: -1], self.ts[self.curr])
+                elif action_type == "mask":
+                    self.state = action(self.state, self.xs[1: -1], self.ts[self. curr])
+                else:
+                    raise RuntimeError("Unrecognized event type")
         self._step_back(0, FDMethod.CN)
         return self._get_price(pde.x0)
 
     def get_prices(self):
         return self.state.copy()
 
-    def _set_payout(self, payout: callable):
-        self.state = payout(self.xs[1:-1])
-        self.curr = len(self.ts) - 2
-
     def _step_back(self, t, method=FDMethod.Explicit):
-        while self.curr >= 0 and self.ts[self.curr] >= t:
-            t0 = self.ts[self.curr]
-            t1 = self.ts[self.curr + 1]
+        while self.curr > 0 and self.ts[self.curr] > t:
+            t0 = self.ts[self.curr - 1]
+            t1 = self.ts[self.curr]
             if method == FDMethod.Explicit:
                 A = None
                 B = np.zeros([self.N - 2, 3])
@@ -124,9 +132,9 @@ class GridPricer(Pricer):
             e2 = np.zeros(2)
             for key, bc in self.bcs.items():
                 if key == "lb":
-                    e2[0] = self._solve_boundary(B[0, :], self.conds[bc["type"]]["lb"], self.lb[self.curr + 1], True)
+                    e2[0] = self._solve_boundary(B[0, :], self.conds[bc["type"]]["lb"], self.lb[self.curr], True)
                 elif key == "ub":
-                    e2[1] = self._solve_boundary(B[-1, :], self.conds[bc["type"]]["ub"], self.ub[self.curr + 1], False)
+                    e2[1] = self._solve_boundary(B[-1, :], self.conds[bc["type"]]["ub"], self.ub[self.curr], False)
                 else:
                     raise RuntimeError("Unrecognized bound")
         else:
@@ -136,9 +144,9 @@ class GridPricer(Pricer):
             e1 = np.zeros(2)
             for key, bc in self.bcs.items():
                 if key == "lb":
-                    e1[0] = self._solve_boundary(A[0, :], self.conds[bc["type"]]["lb"], self.lb[self.curr], True)
+                    e1[0] = self._solve_boundary(A[0, :], self.conds[bc["type"]]["lb"], self.lb[self.curr - 1], True)
                 elif key == "ub":
-                    e1[1] = self._solve_boundary(A[-1, :], self.conds[bc["type"]]["ub"], self.ub[self.curr], False)
+                    e1[1] = self._solve_boundary(A[-1, :], self.conds[bc["type"]]["ub"], self.ub[self.curr - 1], False)
                 else:
                     raise RuntimeError("Unrecognized bound")
         else:

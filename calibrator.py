@@ -10,10 +10,10 @@ from tradable import Tradable
 
 def calibrate_hull_white(pde: HullWhitePDE, pricer: Pricer, zc_bonds: List[Tradable]):
     for zc in zc_bonds:
-        assert(zc.price is not None)
+        assert zc.price is not None
 
-    zc_bonds = sorted(zc_bonds, key=lambda zc: zc.T)  # sort by maturity
-    maturities = [zc.T for zc in zc_bonds]
+    zc_bonds = sorted(zc_bonds, key=lambda zc: zc.t_end)  # sort by maturity
+    maturities = [zc.t_end for zc in zc_bonds]
     pde.reset_theta(maturities)
 
     def loss(level, idx, zc_bond):
