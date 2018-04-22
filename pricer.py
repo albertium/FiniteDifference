@@ -25,6 +25,10 @@ class GridPricer(Pricer):
         BoundType.Neumann: {
             "lb": np.array([-1, 1, 0]),
             "ub": np.array([0, -1, 1])
+        },
+        BoundType.Linear: {
+            "lb": np.array([1, -2, 1]),
+            "ub": np.array([1, -2, 1])
         }
     }
 
@@ -70,7 +74,7 @@ class GridPricer(Pricer):
 
         # pre-process boundary conditions
         for key, bc in self.bcs.items():
-            if bc["type"] == BoundType.Dirichlet:
+            if bc["type"] == BoundType.Dirichlet or bc["type"] == BoundType.Linear:
                 if key == "lb":
                     self.lb = bc["func"](self.xs[0], self.ts)
                 elif key == "ub":

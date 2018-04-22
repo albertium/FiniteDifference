@@ -3,9 +3,10 @@
 import abc
 import numpy as np
 from typing import List, Union
+from copy import deepcopy
 
 from curve import make_linear
-from mtypes import OptionType, BoundType
+from mtypes import OptionType, BoundType, SwapType
 
 
 class Tradable(metaclass=abc.ABCMeta):
@@ -13,16 +14,26 @@ class Tradable(metaclass=abc.ABCMeta):
         "Standard Neumann": {
             "lb": {
                 "type": BoundType.Neumann,
-                "func": lambda x, t: np.ones_like(t)
+                "func": lambda x, t: np.ones_like(t, dtype=float)
             },
             "ub": {
                 "type": BoundType.Neumann,
-                "func": lambda x, t: np.ones_like(t)
+                "func": lambda x, t: np.ones_like(t, dtype=float)
+            }
+        },
+        "Standard Linear": {
+            "lb": {
+                "type": BoundType.Linear,
+                "func": lambda x, t: np.zeros_like(t, dtype=float)
+            },
+            "ub": {
+                "type": BoundType.Linear,
+                "func": lambda x, t: np.zeros_like(t, dtype=float)
             }
         }
     }
 
-    default_bcs = bc_template["Standard Neumann"]
+    default_bcs = bc_template["Standard Linear"]
 
     def __init__(self, events: Union[List[tuple], tuple], t_start, t_end, dt, bcs=None, steps=101, price=None, has_masks=None):
         self.ts = None
@@ -59,11 +70,20 @@ class Tradable(metaclass=abc.ABCMeta):
 
     def __sub__(self, other):
         assert not self.has_masks and not other.has_masks
-        other_events = other.events.copy()
+
+        # need to use decorator to protect the state of the action function to be negate
+        def negate_action(func):
+            def wrapper(x, t):
+                return -func(x, t)
+            return wrapper
+
+        other_events = []
         # negate payouts
-        for time, actions in other_events:
-            for idx, action in enumerate(actions):
-                actions[idx] = ("payout", lambda x, t: -action[1](x, t))  # has to be payout since no masks
+        for time, actions in other.events:
+            tmp = []
+            for _, action in actions:
+                tmp.append(("payout", negate_action(action)))  # has to be payout since no masks
+            other_events.append((time, tmp))
 
         return Tradable(Tradable._merge_events(self.events, other_events),
                         self._t_start, max(self._t_end, other.t_end), min(self.dt, other.dt),
@@ -72,10 +92,19 @@ class Tradable(metaclass=abc.ABCMeta):
 
     def __rmul__(self, other):
         assert isinstance(other, float) or isinstance(other, int)
-        events = self.events.copy()
-        for time, actions in events:
-            for idx, action in enumerate(actions):
-                actions[idx] = ("payout", lambda x, t: other * action[1](x, t))  # has to be payout since no masks
+
+        # need to use decorator to protect the state of the action function to be negate
+        def multiply_action(func, m):
+            def wrapper(x, t):
+                return m * func(x, t)
+            return wrapper
+
+        events = []
+        for time, actions in self.events:
+            tmp = []
+            for _, action in actions:
+                tmp.append(("payout", multiply_action(action, other)))  # has to be payout since no masks
+            events.append((time, tmp))
 
         return Tradable(events, self._t_start, self._t_end, self.dt, self.bcs, self.steps, self.price, self.has_masks)
 
@@ -110,7 +139,7 @@ class Tradable(metaclass=abc.ABCMeta):
     @staticmethod
     def _merge_events(events1: List[tuple], events2: List[tuple]):
         # use round to allow float numbers comparison
-        sorter = {round(time, 10): actions for time, actions in events1}
+        sorter = {round(time, 10): deepcopy(actions) for time, actions in events1}
         for time, actions in events2:
             key = round(time, 10)
             if key in sorter:
@@ -149,7 +178,7 @@ class HeatSecurity(Tradable):
 
         def payout(x, t): return np.exp(x)
         events = (T, ("payout", payout))
-        super().__init__(events, 0, T, dt = 1/9, bcs=bcs, steps=9)
+        super().__init__(events, 0, T, dt=1/9, bcs=bcs, steps=9)
 
 
 class Underlying(Tradable):
@@ -182,11 +211,11 @@ class Option(Tradable):
         bcs = {
             "lb": {
                 "type": BoundType.Dirichlet,
-                "func": lambda x, t: np.zeros_like(t)
+                "func": lambda x, t: np.zeros_like(t, dtype=float)
             },
             "ub": {
                 "type": BoundType.Neumann,
-                "func": lambda x, t: np.ones_like(t)
+                "func": lambda x, t: np.ones_like(t, dtype=float)
             }
         }
 
@@ -197,18 +226,44 @@ class Option(Tradable):
         self.K = K
 
 
-class Bond(Tradable):
-    def __init__(self, t_start, t_end, coupon_dt=None, coupon_rate=None, price=None):
-        def payout(x, t): return np.ones_like(x)
+class ZCBond(Tradable):
+    """
+    zero coupon bond
+    """
+    def __init__(self, t_start, t_end, price=None):
+        def payout(x, t): return np.ones_like(x, dtype=float)
         events = [(t_end, [("payout", payout)])]
-        if coupon_dt is not None:
-            assert coupon_rate is not None
-
-            def coupon(x, t): return coupon_rate * coupon_dt * np.ones_like(x)
-            events[0][1].append(("payout", coupon))  # coupon at maturity
-            now = t_end - coupon_dt
-            while now > t_start:  # add coupons
-                events.append((now, [("payout", coupon)]))
-                now -= coupon_dt
         super().__init__(events, t_start, t_end, dt=1 / 41, steps=101, price=price)
 
+
+class Annuity(Tradable):
+    def __init__(self, t_start, t_end, coupon_freq, coupon_rate, price=None):
+        dt = 1 / coupon_freq
+
+        def coupon(x, t): return coupon_rate * dt * np.ones_like(x, dtype=float)
+        events = []
+        now = t_end
+        while now > t_start:
+            events.append((now, [("payout", coupon)]))
+            now -= dt
+        super().__init__(events, t_start, t_end, 1/41, steps=101, price=price, has_masks=False)
+
+
+class CBond(Tradable):
+    """
+    coupon bond
+    """
+    def __init__(self, t_start, t_end, coupon_freq, coupon_rate, price=None):
+        tmp = ZCBond(t_start, t_end) + Annuity(t_start, t_end, coupon_freq, coupon_rate)
+        super().__init__(tmp.events, t_start, t_end, 1/41, steps=101, price=price, has_masks=False)
+
+
+class Swap(Tradable):
+    def __init__(self, t_start, t_end, coupon_freq, coupon_rate, swap_type=SwapType.Payer, price=None):
+        if swap_type == SwapType.Payer:
+            tmp = ZCBond(0, t_start) - ZCBond(0, t_end) - Annuity(t_start, t_end, coupon_freq, coupon_rate)
+        elif swap_type == SwapType.Receiver:
+            tmp = Annuity(t_start, t_end, coupon_freq, coupon_rate) - ZCBond(0, t_start) + ZCBond(0, t_end)
+        else:
+            raise RuntimeError("Unrecognized swap type")
+        super().__init__(tmp.events, t_start, t_end, 1/41, steps=101, price=price, has_masks=False)
